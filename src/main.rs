@@ -24,6 +24,10 @@ struct Args {
     /// ASN to check (optional, if not provided will show all matching ROAs)
     #[arg(short, long)]
     asn: Option<u32>,
+
+    /// Timeout in seconds for RTR sync (default: 30)
+    #[arg(short, long, default_value = "30")]
+    timeout: u64,
 }
 
 struct RoaCollector {
@@ -81,15 +85,12 @@ async fn main() -> Result<()> {
     let prefix = IpNet::from_str(&args.prefix)
         .context("Failed to parse prefix")?;
 
-    // Try to parse as SocketAddr first, if that fails, try DNS resolution
     let server_addr = if let Ok(addr) = args.server.parse::<SocketAddr>() {
         addr
     } else {
-        // Try DNS resolution
         let addrs: Vec<SocketAddr> = args.server.to_socket_addrs()
             .context("Failed to resolve server address")?.
             collect();
-
         *addrs.first()
             .context("No addresses found for hostname")?
     };
@@ -104,51 +105,50 @@ async fn main() -> Result<()> {
         .context("Connection timeout")?
         .context("Failed to connect to RTR server")?;
 
-    println!("Connected! Fetching ROAs...\n");
-    println!("Starting RTR session...");
+    println!("Connected! Fetching ROAs (timeout: {}s)...\n", args.timeout);
 
     let collector = RoaCollector::new();
     let mut client = Client::new(stream, collector, None);
 
-    println!("Running RTR client...");
-
-    // Add timeout to prevent hanging
     let result = timeout(
-        Duration::from_secs(60),
+        Duration::from_secs(args.timeout),
         client.run()
     )
         .await;
 
-    match result {
+    let collector = match result {
         Ok(Ok(())) => {
             println!("RTR session completed successfully");
+            client.into_target()
         }
         Ok(Err(e)) => {
-            // Check if this is our completion signal (PayloadError::Corrupt gets converted to io::Error)
             if e.kind() == std::io::ErrorKind::Other || e.to_string().contains("corrupt") {
                 println!("Initial sync complete");
+                client.into_target()
             } else {
                 return Err(e).context("Failed to fetch ROAs from RTR server");
             }
         }
         Err(_) => {
-            return Err(anyhow::anyhow!("RTR session timeout after 60 seconds - server may not be responding to RTR protocol"));
+            println!("RTR sync timeout (expected) - extracting collected ROAs");
+            client.into_target()
         }
-    }
-
-    let collector = client.into_target();
+    };
 
     let total_roas = collector.roas.len();
+
+    if total_roas == 0 {
+        return Err(anyhow::anyhow!("No ROAs received from RTR server - connection may have failed"));
+    }
+
     println!("Total ROAs received: {}", total_roas);
-    println!("\nValidation results for prefix: {}\n", prefix);
 
     let mut matching_roas = Vec::new();
-
     for roa in &collector.roas {
         let roa_addr = roa.prefix.addr();
         let roa_prefix_len = roa.prefix.prefix_len();
 
-        let matches = match (prefix, roa_addr) {
+        let is_match = match (prefix, roa_addr) {
             (IpNet::V4(v4_prefix), IpAddr::V4(v4_addr)) => {
                 v4_addr == v4_prefix.addr() && roa_prefix_len == v4_prefix.prefix_len()
             }
@@ -158,11 +158,13 @@ async fn main() -> Result<()> {
             _ => false,
         };
 
-        if matches {
+        if is_match {
             let max_len = roa.prefix.max_len().unwrap_or(roa_prefix_len);
             matching_roas.push((u32::from(roa.asn), max_len));
         }
     }
+
+    println!("\nValidation results for prefix: {}\n", prefix);
 
     if matching_roas.is_empty() {
         println!("❌ NOT FOUND - No ROA found for this prefix");
