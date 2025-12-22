@@ -4,8 +4,16 @@ Validate IP prefixes against an RTR (RPKI-to-Router) server.
 
 ## Installation
 
+### From source
+
 ```bash
 cargo install --path .
+```
+
+### Docker
+
+```bash
+docker pull ghcr.io/nxthdr/rtr-validator:main
 ```
 
 ## Usage
@@ -16,6 +24,7 @@ rtr-validator --server <SERVER> --prefix <PREFIX> [OPTIONS]
 
 ### Examples
 
+**Native:**
 ```bash
 # Check if a prefix has any ROAs
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24"
@@ -28,6 +37,15 @@ rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24" --debug
 
 # IPv6 example
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "2606:4700:4700::/48" -a 13335
+```
+
+**Docker:**
+```bash
+# Check if a prefix has any ROAs
+docker run --rm ghcr.io/nxthdr/rtr-validator:main -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24"
+
+# Validate with specific ASN
+docker run --rm ghcr.io/nxthdr/rtr-validator:main -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24" -a 13335
 ```
 
 ### Output
