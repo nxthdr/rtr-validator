@@ -11,20 +11,17 @@ cargo install --path .
 ## Usage
 
 ```bash
-rtr-validator --server <SERVER> --prefix <PREFIX> [OPTIONS]
+rtr-validator --server <SERVER> --prefix <PREFIX> [--asn <ASN>]
 ```
 
 ### Examples
 
 ```bash
-# Check if a prefix has any ROAs (default 30s timeout)
+# Check if a prefix has any ROAs
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24"
 
 # Validate with specific ASN
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24" -a 13335
-
-# Use longer timeout for slower connections
-rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24" -t 60
 
 # IPv6 example
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "2606:4700:4700::/48" -a 13335
@@ -34,10 +31,10 @@ rtr-validator -s "rtr.nxthdr.dev:3323" -p "2606:4700:4700::/48" -a 13335
 
 ```
 Connecting to RTR server at [2a06:de00:50:cafe:100::e]:3323...
-Connected! Fetching ROAs (timeout: 30s)...
+Connected! Fetching ROAs until End of Data marker...
 
-RTR sync timeout (expected) - extracting collected ROAs
-Total ROAs received: 785041
+End of Data received - initial sync complete
+Total ROAs received: 784793
 
 Validation results for prefix: 1.1.1.0/24
 
@@ -45,9 +42,12 @@ Validation results for prefix: 1.1.1.0/24
   - AS13335 (max length: 24)
 ```
 
+## How it works
+
+The tool connects to the RTR server and downloads all ROAs until the RTR protocol's **End of Data (EOD)** marker is received. This ensures complete data synchronization before performing validation. The EOD marker is detected via the `Timing` parameters sent in the End-of-Data PDU.
+
 ## Options
 
 - `-s, --server` - RTR server address (hostname:port or [ipv6]:port)
 - `-p, --prefix` - IP prefix to validate (IPv4 or IPv6)
 - `-a, --asn` - ASN to check (optional)
-- `-t, --timeout` - Timeout in seconds for RTR sync (default: 30)

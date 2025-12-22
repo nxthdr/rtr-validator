@@ -25,23 +25,18 @@ struct Args {
     #[arg(short, long)]
     asn: Option<u32>,
 
-    /// Timeout in seconds for RTR sync (default: 30)
-    #[arg(short, long, default_value = "30")]
-    timeout: u64,
 }
 
 struct RoaCollector {
     roas: Vec<RouteOrigin>,
-    update_count: usize,
-    last_update_size: usize,
+    eod_received: bool,
 }
 
 impl RoaCollector {
     fn new() -> Self {
         Self {
             roas: Vec::new(),
-            update_count: 0,
-            last_update_size: 0,
+            eod_received: false,
         }
     }
 }
@@ -56,17 +51,9 @@ impl PayloadTarget for RoaCollector {
     fn apply(
         &mut self,
         update: Self::Update,
-        _timing: Timing,
+        timing: Timing,
     ) -> Result<(), PayloadError> {
-        self.update_count += 1;
-        self.last_update_size = update.len();
-
-        // If we've received an empty update after receiving data, initial sync is done
-        if update.is_empty() && self.roas.len() > 0 {
-            // Signal completion by returning a corrupt error
-            return Err(PayloadError::Corrupt);
-        }
-
+        // Process all payloads in the update
         for (action, payload) in update {
             if let Action::Announce = action {
                 if let Payload::Origin(origin) = payload {
@@ -74,6 +61,15 @@ impl PayloadTarget for RoaCollector {
                 }
             }
         }
+
+        // The Timing parameter is provided with the End-of-Data PDU
+        // When we receive timing info and have collected ROAs, EOD is reached
+        if self.roas.len() > 0 && timing.refresh > 0 {
+            self.eod_received = true;
+            // Signal completion by returning an error to stop the client
+            return Err(PayloadError::Corrupt);
+        }
+
         Ok(())
     }
 }
@@ -105,33 +101,25 @@ async fn main() -> Result<()> {
         .context("Connection timeout")?
         .context("Failed to connect to RTR server")?;
 
-    println!("Connected! Fetching ROAs (timeout: {}s)...\n", args.timeout);
+    println!("Connected! Fetching ROAs until End of Data marker...\n");
 
     let collector = RoaCollector::new();
     let mut client = Client::new(stream, collector, None);
 
-    let result = timeout(
-        Duration::from_secs(args.timeout),
-        client.run()
-    )
-        .await;
+    let result = client.run().await;
 
     let collector = match result {
-        Ok(Ok(())) => {
+        Ok(()) => {
             println!("RTR session completed successfully");
             client.into_target()
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             if e.kind() == std::io::ErrorKind::Other || e.to_string().contains("corrupt") {
-                println!("Initial sync complete");
+                println!("End of Data received - initial sync complete");
                 client.into_target()
             } else {
                 return Err(e).context("Failed to fetch ROAs from RTR server");
             }
-        }
-        Err(_) => {
-            println!("RTR sync timeout (expected) - extracting collected ROAs");
-            client.into_target()
         }
     };
 
