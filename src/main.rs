@@ -25,6 +25,9 @@ struct Args {
     #[arg(short, long)]
     asn: Option<u32>,
 
+    /// Enable debug output
+    #[arg(short, long)]
+    debug: bool,
 }
 
 struct RoaCollector {
@@ -91,7 +94,9 @@ async fn main() -> Result<()> {
             .context("No addresses found for hostname")?
     };
 
-    println!("Connecting to RTR server at {}...", server_addr);
+    if args.debug {
+        println!("Connecting to RTR server at {}...", server_addr);
+    }
 
     let stream = timeout(
         Duration::from_secs(10),
@@ -101,7 +106,9 @@ async fn main() -> Result<()> {
         .context("Connection timeout")?
         .context("Failed to connect to RTR server")?;
 
-    println!("Connected! Fetching ROAs until End of Data marker...\n");
+    if args.debug {
+        println!("Connected! Fetching ROAs until End of Data marker...\n");
+    }
 
     let collector = RoaCollector::new();
     let mut client = Client::new(stream, collector, None);
@@ -110,12 +117,16 @@ async fn main() -> Result<()> {
 
     let collector = match result {
         Ok(()) => {
-            println!("RTR session completed successfully");
+            if args.debug {
+                println!("RTR session completed successfully");
+            }
             client.into_target()
         }
         Err(e) => {
             if e.kind() == std::io::ErrorKind::Other || e.to_string().contains("corrupt") {
-                println!("End of Data received - initial sync complete");
+                if args.debug {
+                    println!("End of Data received - initial sync complete");
+                }
                 client.into_target()
             } else {
                 return Err(e).context("Failed to fetch ROAs from RTR server");
@@ -129,7 +140,9 @@ async fn main() -> Result<()> {
         return Err(anyhow::anyhow!("No ROAs received from RTR server - connection may have failed"));
     }
 
-    println!("Total ROAs received: {}", total_roas);
+    if args.debug {
+        println!("Total ROAs received: {}", total_roas);
+    }
 
     let mut matching_roas = Vec::new();
     for roa in &collector.roas {
@@ -152,7 +165,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    println!("\nValidation results for prefix: {}\n", prefix);
+    if args.debug {
+        println!("\nValidation results for prefix: {}\n", prefix);
+    }
 
     if matching_roas.is_empty() {
         println!("❌ NOT FOUND - No ROA found for this prefix");

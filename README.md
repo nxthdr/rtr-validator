@@ -11,7 +11,7 @@ cargo install --path .
 ## Usage
 
 ```bash
-rtr-validator --server <SERVER> --prefix <PREFIX> [--asn <ASN>]
+rtr-validator --server <SERVER> --prefix <PREFIX> [OPTIONS]
 ```
 
 ### Examples
@@ -23,12 +23,22 @@ rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24"
 # Validate with specific ASN
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24" -a 13335
 
+# Enable debug output to see connection details
+rtr-validator -s "rtr.nxthdr.dev:3323" -p "1.1.1.0/24" --debug
+
 # IPv6 example
 rtr-validator -s "rtr.nxthdr.dev:3323" -p "2606:4700:4700::/48" -a 13335
 ```
 
 ### Output
 
+**Normal mode** (clean output):
+```
+✅ FOUND - 1 matching ROA(s):
+  - AS13335 (max length: 24)
+```
+
+**Debug mode** (detailed output):
 ```
 Connecting to RTR server at [2a06:de00:50:cafe:100::e]:3323...
 Connected! Fetching ROAs until End of Data marker...
@@ -51,3 +61,4 @@ The tool connects to the RTR server and downloads all ROAs until the RTR protoco
 - `-s, --server` - RTR server address (hostname:port or [ipv6]:port)
 - `-p, --prefix` - IP prefix to validate (IPv4 or IPv6)
 - `-a, --asn` - ASN to check (optional)
+- `-d, --debug` - Enable debug output showing connection and sync details
