@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rpki = { version = "0.19", features = ["rtr", "crypto"] }
+rpki = { version = "0.20", features = ["rtr", "crypto"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
